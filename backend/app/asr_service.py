@@ -3,9 +3,6 @@ import threading
 import inspect
 import gc
 
-import torch
-from qwen_asr import Qwen3ASRModel
-
 from app.asr_engines import (
     ENGINE_QWEN3_LOCAL,
     list_asr_engines,
@@ -17,21 +14,45 @@ from app.audio_processor import load_audio, audio_duration_seconds, export_chunk
 
 _MODEL = None
 _MODEL_LOCK = threading.Lock()
+_TORCH = None
+_QWEN3_ASR_MODEL = None
+
+
+def _load_qwen_dependencies():
+    global _TORCH, _QWEN3_ASR_MODEL
+
+    if _TORCH is not None and _QWEN3_ASR_MODEL is not None:
+        return _TORCH, _QWEN3_ASR_MODEL
+
+    try:
+        import torch as torch_mod
+        from qwen_asr import Qwen3ASRModel as qwen3_cls
+    except Exception as exc:
+        raise RuntimeError(
+            "Qwen3 local engine dependencies are unavailable. "
+            "Install `torch` and `qwen-asr`, then retry with asr_engine=qwen3_local."
+        ) from exc
+
+    _TORCH = torch_mod
+    _QWEN3_ASR_MODEL = qwen3_cls
+    return _TORCH, _QWEN3_ASR_MODEL
 
 
 def _resolve_dtype(dtype_name):
+    torch_mod, _ = _load_qwen_dependencies()
     name = (dtype_name or "").strip().lower()
     if name == "float16":
-        return torch.float16
+        return torch_mod.float16
     if name == "float32":
-        return torch.float32
+        return torch_mod.float32
     if name == "bfloat16":
-        return torch.bfloat16
-    return torch.bfloat16
+        return torch_mod.bfloat16
+    return torch_mod.bfloat16
 
 
 def _resolve_device(device):
-    if device.startswith("cuda") and not torch.cuda.is_available():
+    torch_mod, _ = _load_qwen_dependencies()
+    if device.startswith("cuda") and not torch_mod.cuda.is_available():
         return "cpu"
     return device
 
@@ -77,6 +98,7 @@ def get_model():
     global _MODEL
     if _MODEL is not None:
         return _MODEL
+    torch_mod, qwen3_cls = _load_qwen_dependencies()
 
     model_path = SETTINGS.asr_model_path
     if SETTINGS.asr_local_files_only and not os.path.exists(model_path):
@@ -98,14 +120,14 @@ def get_model():
     if SETTINGS.asr_attn_implementation:
         kwargs["attn_implementation"] = SETTINGS.asr_attn_implementation
 
-    signature = inspect.signature(Qwen3ASRModel.from_pretrained)
+    signature = inspect.signature(qwen3_cls.from_pretrained)
     filtered_kwargs = {k: v for k, v in kwargs.items() if k in signature.parameters}
 
-    _MODEL = Qwen3ASRModel.from_pretrained(model_path, **filtered_kwargs)
+    _MODEL = qwen3_cls.from_pretrained(model_path, **filtered_kwargs)
     actual_device = _model_device(_MODEL)
     if (
         target_device.startswith("cuda")
-        and torch.cuda.is_available()
+        and torch_mod.cuda.is_available()
         and (actual_device is None or str(actual_device).startswith("cpu"))
     ):
         try:
@@ -117,7 +139,7 @@ def get_model():
     print(
         f"[ASR] Loaded model from {model_path} on {actual_device or 'unknown'} "
         f"(dtype={SETTINGS.asr_dtype}, device_setting={SETTINGS.asr_device}, "
-        f"cuda_available={torch.cuda.is_available()})"
+        f"cuda_available={torch_mod.cuda.is_available()})"
     )
     return _MODEL
 
@@ -129,8 +151,12 @@ def release_model():
             return
         _MODEL = None
     gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    if _TORCH is not None:
+        try:
+            if _TORCH.cuda.is_available():
+                _TORCH.cuda.empty_cache()
+        except Exception:
+            pass
 
 
 def _normalize_segment(segment):
@@ -193,9 +219,10 @@ def _fallback_segments(text, duration):
 
 
 def _transcribe_with_qwen(audio_path, language=None):
+    torch_mod, _ = _load_qwen_dependencies()
     model = get_model()
 
-    with _MODEL_LOCK, torch.inference_mode():
+    with _MODEL_LOCK, torch_mod.inference_mode():
         transcribe_kwargs = {"audio": audio_path, "language": language}
         signature = inspect.signature(model.transcribe)
         if "device" in signature.parameters:
