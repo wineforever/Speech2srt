@@ -6,6 +6,12 @@ import gc
 import torch
 from qwen_asr import Qwen3ASRModel
 
+from app.asr_engines import (
+    ENGINE_QWEN3_LOCAL,
+    list_asr_engines,
+    resolve_asr_engine,
+    transcribe_with_online_engine,
+)
 from app.config import SETTINGS
 from app.audio_processor import load_audio, audio_duration_seconds, export_chunks
 
@@ -186,7 +192,7 @@ def _fallback_segments(text, duration):
     return segments
 
 
-def transcribe_audio(audio_path, language=None):
+def _transcribe_with_qwen(audio_path, language=None):
     model = get_model()
 
     with _MODEL_LOCK, torch.inference_mode():
@@ -214,14 +220,31 @@ def transcribe_audio(audio_path, language=None):
     return normalized
 
 
-def transcribe_audio_chunked(audio_path, language=None, progress_cb=None):
+def transcribe_audio(audio_path, language=None, asr_engine=None):
+    resolved_engine = resolve_asr_engine(asr_engine, fallback=SETTINGS.asr_engine)
+    if resolved_engine != ENGINE_QWEN3_LOCAL:
+        return transcribe_with_online_engine(
+            audio_path=audio_path,
+            engine=resolved_engine,
+            language=language,
+        )
+    return _transcribe_with_qwen(audio_path, language=language)
+
+
+def transcribe_audio_chunked(audio_path, language=None, asr_engine=None, progress_cb=None):
+    resolved_engine = resolve_asr_engine(asr_engine, fallback=SETTINGS.asr_engine)
+    if resolved_engine != ENGINE_QWEN3_LOCAL:
+        if progress_cb:
+            progress_cb(60, f"Transcribing audio ({resolved_engine})")
+        return transcribe_audio(audio_path, language=language, asr_engine=resolved_engine)
+
     audio = load_audio(audio_path)
     duration = audio_duration_seconds(audio)
     chunk_seconds = SETTINGS.asr_chunk_seconds
     if not chunk_seconds or duration <= chunk_seconds:
         if progress_cb:
             progress_cb(60, "Transcribing audio")
-        return transcribe_audio(audio_path, language=language)
+        return transcribe_audio(audio_path, language=language, asr_engine=resolved_engine)
 
     temp_dir = os.path.join(SETTINGS.output_dir, "chunks")
     os.makedirs(temp_dir, exist_ok=True)
@@ -239,7 +262,11 @@ def transcribe_audio_chunked(audio_path, language=None, progress_cb=None):
             if progress_cb:
                 progress_cb(30 + int((idx / total) * 50), f"Transcribing chunk {idx}/{total}")
 
-            chunk_result = transcribe_audio(chunk_path, language=language)
+            chunk_result = transcribe_audio(
+                chunk_path,
+                language=language,
+                asr_engine=resolved_engine,
+            )
             if not detected_language:
                 detected_language = chunk_result.get("language")
 
@@ -265,3 +292,7 @@ def transcribe_audio_chunked(audio_path, language=None, progress_cb=None):
         "language": detected_language,
         "segments": all_segments,
     }
+
+
+def get_asr_engines_payload():
+    return list_asr_engines(default_engine=SETTINGS.asr_engine)

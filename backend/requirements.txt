@@ -6,3 +6,4 @@ numpy
 soundfile
 qwen-asr
 torch
+requests

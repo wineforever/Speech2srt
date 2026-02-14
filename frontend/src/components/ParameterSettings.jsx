@@ -1,12 +1,33 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
-const ParameterSettings = ({ onSettingsChange, disabled, settings }) => {
+const fallbackEngines = [
+  { id: 'bcut', label: 'BCut接口' },
+  { id: 'jianying', label: 'JianYing接口' },
+  { id: 'kuaishou', label: 'KuaiShou接口' },
+  { id: 'qwen3_local', label: 'Qwen3本地模型' }
+]
+
+const ParameterSettings = ({ onSettingsChange, disabled, settings, engineOptions }) => {
   const [cropSeconds, setCropSeconds] = useState(5.5)
   const [language, setLanguage] = useState('')
+  const [asrEngine, setAsrEngine] = useState('bcut')
   const [outputFormats, setOutputFormats] = useState({
     srt: true,
     txt: true
   })
+
+  const engines = useMemo(() => {
+    if (!Array.isArray(engineOptions) || engineOptions.length === 0) {
+      return fallbackEngines
+    }
+    const normalized = engineOptions
+      .map((item) => ({
+        id: String(item.id || '').trim(),
+        label: String(item.label || item.id || '').trim()
+      }))
+      .filter((item) => item.id && item.label)
+    return normalized.length > 0 ? normalized : fallbackEngines
+  }, [engineOptions])
 
   useEffect(() => {
     if (!settings) {
@@ -18,19 +39,48 @@ const ParameterSettings = ({ onSettingsChange, disabled, settings }) => {
     if (settings.language !== undefined) {
       setLanguage(settings.language || '')
     }
+    if (settings.asrEngine !== undefined) {
+      setAsrEngine(settings.asrEngine || '')
+    }
     if (settings.outputFormats) {
       setOutputFormats(settings.outputFormats)
     }
   }, [settings])
 
+  useEffect(() => {
+    if (asrEngine || engines.length === 0) {
+      return
+    }
+    const fallback = engines[0].id
+    setAsrEngine(fallback)
+    onSettingsChange({
+      cropSeconds,
+      outputFormats,
+      language,
+      asrEngine: fallback
+    })
+  }, [asrEngine, cropSeconds, engines, language, onSettingsChange, outputFormats])
+
   const emitChange = (next) => {
-    onSettingsChange(next)
+    onSettingsChange({
+      cropSeconds,
+      outputFormats,
+      language,
+      asrEngine,
+      ...next
+    })
   }
 
   const handleCropSecondsChange = (event) => {
     const value = parseFloat(event.target.value) || 0
     setCropSeconds(value)
-    emitChange({ cropSeconds: value, outputFormats, language })
+    emitChange({ cropSeconds: value })
+  }
+
+  const handleAsrEngineChange = (event) => {
+    const value = event.target.value
+    setAsrEngine(value)
+    emitChange({ asrEngine: value })
   }
 
   const handleFormatToggle = (format) => {
@@ -39,13 +89,13 @@ const ParameterSettings = ({ onSettingsChange, disabled, settings }) => {
       [format]: !outputFormats[format]
     }
     setOutputFormats(newFormats)
-    emitChange({ cropSeconds, outputFormats: newFormats, language })
+    emitChange({ outputFormats: newFormats })
   }
 
   const handleLanguageChange = (event) => {
     const value = event.target.value
     setLanguage(value)
-    emitChange({ cropSeconds, outputFormats, language: value })
+    emitChange({ language: value })
   }
 
   return (
@@ -66,6 +116,20 @@ const ParameterSettings = ({ onSettingsChange, disabled, settings }) => {
             />
             <span className="text-xs text-slate-600">0 表示不裁剪</span>
           </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">ASR 引擎</label>
+          <select
+            value={asrEngine}
+            onChange={handleAsrEngineChange}
+            disabled={disabled}
+          >
+            {engines.map((engine) => (
+              <option key={engine.id} value={engine.id}>
+                {engine.label}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="block text-sm font-medium mb-2">识别语言</label>

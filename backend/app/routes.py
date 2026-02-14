@@ -3,12 +3,18 @@ import os
 
 from flask import Blueprint, current_app, jsonify, request, send_from_directory
 
+from app.asr_engines import AsrEngineError, resolve_asr_engine
 from app.audio_processor import crop_audio, load_audio, save_audio, validate_audio
-from app.asr_service import transcribe_audio_chunked, release_model
-from app.config import SETTINGS
+from app.asr_service import get_asr_engines_payload, transcribe_audio_chunked, release_model
+from app.config import PROJECT_ROOT, SETTINGS
 from app.subtitle_generator import generate_subtitles
 from app.tasks import task_manager
-from app.utils import generate_unique_filename, is_supported_format
+from app.utils import (
+    build_output_filename,
+    ensure_unique_filename,
+    generate_unique_filename,
+    is_supported_format,
+)
 
 api = Blueprint("api", __name__)
 
@@ -49,12 +55,30 @@ def _read_preview(file_path):
         return None
 
 
+def _resolve_completion_sound():
+    env_path = os.getenv("SPEECH2SRT_SOUND_FILE")
+    candidates = [
+        env_path,
+        os.path.join(PROJECT_ROOT, "Sound.mp3"),
+        os.path.join(os.getcwd(), "Sound.mp3"),
+    ]
+    for path in candidates:
+        if not path:
+            continue
+        full_path = os.path.abspath(path)
+        if os.path.isfile(full_path):
+            return full_path
+    return None
+
+
 def process_audio_job(job_id, params, update_job):
     try:
         filename = params["filename"]
+        original_filename = params.get("original_filename") or filename
         crop_seconds = float(params.get("crop_seconds", 0))
         output_formats = params.get("output_formats") or {"srt": True, "txt": True}
         language = params.get("language")
+        asr_engine = params.get("asr_engine")
 
         upload_folder = SETTINGS.upload_dir
         output_folder = SETTINGS.output_dir
@@ -73,7 +97,10 @@ def process_audio_job(job_id, params, update_job):
         audio_duration = audio.duration_seconds if hasattr(audio, "duration_seconds") else None
 
         update_job(job_id, progress=18, message="Saving processed audio")
-        output_filename = f"processed_{filename}"
+        output_filename = build_output_filename(
+            original_filename, version_name=SETTINGS.output_version_name
+        )
+        output_filename = ensure_unique_filename(output_folder, output_filename)
         output_path = os.path.join(output_folder, output_filename)
         save_audio(audio, output_path)
 
@@ -83,7 +110,10 @@ def process_audio_job(job_id, params, update_job):
             update_job(job_id, progress=progress, message=message)
 
         asr_result = transcribe_audio_chunked(
-            output_path, language=language, progress_cb=progress_cb
+            output_path,
+            language=language,
+            asr_engine=asr_engine,
+            progress_cb=progress_cb,
         )
 
         update_job(job_id, progress=85, message="Generating subtitles")
@@ -136,7 +166,8 @@ def upload_file():
         return jsonify({"error": "Empty filename"}), 400
 
     if not is_supported_format(file.filename):
-        return jsonify({"error": "Only wav and mp3 are supported"}), 400
+        allowed = ", ".join(SETTINGS.supported_formats)
+        return jsonify({"error": f"Only {allowed} are supported"}), 400
 
     filename = generate_unique_filename(file.filename)
     filepath = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
@@ -155,6 +186,7 @@ def upload_file():
         {
             "success": True,
             "filename": filename,
+            "original_filename": file.filename,
             "duration": duration,
         }
     ), 200
@@ -164,9 +196,11 @@ def upload_file():
 def process_audio():
     data = request.get_json(silent=True) or {}
     filename = data.get("filename")
+    original_filename = data.get("original_filename")
     crop_seconds_raw = data.get("crop_seconds", 0)
     output_formats = data.get("output_formats") or {"srt": True, "txt": True}
     language = data.get("language")
+    asr_engine = data.get("asr_engine")
 
     if not filename:
         return jsonify({"error": "Missing filename"}), 400
@@ -175,6 +209,10 @@ def process_audio():
         crop_seconds = float(crop_seconds_raw)
     except (TypeError, ValueError):
         return jsonify({"error": "Invalid crop_seconds"}), 400
+    try:
+        resolved_asr_engine = resolve_asr_engine(asr_engine, fallback=SETTINGS.asr_engine)
+    except AsrEngineError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     input_path = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
     if not os.path.exists(input_path):
@@ -184,13 +222,31 @@ def process_audio():
         process_audio_job,
         {
             "filename": filename,
+            "original_filename": original_filename,
             "crop_seconds": crop_seconds,
             "output_formats": output_formats,
             "language": language,
+            "asr_engine": resolved_asr_engine,
         },
     )
 
     return jsonify({"job_id": job_id}), 202
+
+
+@api.route("/asr-engines", methods=["GET"])
+def asr_engines():
+    return jsonify(get_asr_engines_payload()), 200
+
+
+@api.route("/assets/completion-sound", methods=["GET"])
+def completion_sound():
+    sound_path = _resolve_completion_sound()
+    if not sound_path:
+        return jsonify({"error": "Completion sound not found"}), 404
+
+    directory = os.path.dirname(sound_path)
+    filename = os.path.basename(sound_path)
+    return send_from_directory(directory, filename)
 
 
 @api.route("/status/<job_id>", methods=["GET"])

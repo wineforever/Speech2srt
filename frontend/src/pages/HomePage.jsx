@@ -9,7 +9,8 @@ import api from '../services/api.js'
 const initialSettings = {
   cropSeconds: 5.5,
   outputFormats: { srt: true, txt: true },
-  language: ''
+  language: '',
+  asrEngine: 'bcut'
 }
 
 const HomePage = () => {
@@ -27,6 +28,8 @@ const HomePage = () => {
   const [jobStatus, setJobStatus] = useState('')
   const [outputFiles, setOutputFiles] = useState(null)
   const [previews, setPreviews] = useState({})
+  const [asrEngines, setAsrEngines] = useState([])
+  const [defaultAsrEngine, setDefaultAsrEngine] = useState(initialSettings.asrEngine)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -43,25 +46,94 @@ const HomePage = () => {
 
   useEffect(() => () => stopPolling(), [])
 
-  const playCompletionSound = () => {
+  useEffect(() => {
+    let cancelled = false
+
+    const loadAsrEngines = async () => {
+      try {
+        const response = await api.getAsrEngines()
+        if (cancelled) {
+          return
+        }
+        const data = response.data || {}
+        const serverEngines = Array.isArray(data.engines) ? data.engines : []
+        const serverDefault = data.default_engine || initialSettings.asrEngine
+        setAsrEngines(serverEngines)
+        setDefaultAsrEngine(serverDefault)
+        setSettings((prev) => {
+          if (!prev.asrEngine || prev.asrEngine === initialSettings.asrEngine) {
+            return { ...prev, asrEngine: serverDefault }
+          }
+          return prev
+        })
+      } catch (err) {
+        if (!cancelled) {
+          setAsrEngines([])
+        }
+      }
+    }
+
+    loadAsrEngines()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const playFallbackBell = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext
       if (!AudioContext) {
         return
       }
+
       const context = new AudioContext()
-      const oscillator = context.createOscillator()
-      const gainNode = context.createGain()
-      oscillator.type = 'sine'
-      oscillator.frequency.value = 880
-      gainNode.gain.value = 0.1
-      oscillator.connect(gainNode)
-      gainNode.connect(context.destination)
-      oscillator.start()
-      oscillator.stop(context.currentTime + 0.25)
-      oscillator.onended = () => context.close()
+      const now = context.currentTime
+
+      const playBellNote = (frequency, start, duration, peakGain) => {
+        const main = context.createOscillator()
+        const harmonic = context.createOscillator()
+        const gainNode = context.createGain()
+
+        main.type = 'sine'
+        harmonic.type = 'triangle'
+        main.frequency.setValueAtTime(frequency, start)
+        harmonic.frequency.setValueAtTime(frequency * 2, start)
+
+        gainNode.gain.setValueAtTime(0.0001, start)
+        gainNode.gain.exponentialRampToValueAtTime(peakGain, start + 0.02)
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+
+        main.connect(gainNode)
+        harmonic.connect(gainNode)
+        gainNode.connect(context.destination)
+
+        main.start(start)
+        harmonic.start(start)
+        main.stop(start + duration)
+        harmonic.stop(start + duration)
+      }
+
+      // "叮咚" 两段铃声（先高后低）
+      playBellNote(1320, now, 0.28, 0.085)
+      playBellNote(880, now + 0.18, 0.5, 0.1)
+
+      window.setTimeout(() => {
+        context.close().catch(() => {})
+      }, 1100)
     } catch (err) {
       // ignore audio errors
+    }
+  }
+
+  const playCompletionSound = async () => {
+    try {
+      const audio = new Audio(api.completionSoundUrl())
+      audio.preload = 'auto'
+      audio.volume = 1
+      await audio.play()
+    } catch (err) {
+      playFallbackBell()
     }
   }
 
@@ -84,7 +156,7 @@ const HomePage = () => {
           setEtaSeconds(null)
           jobStartRef.current = null
           if (lastStatusRef.current !== 'done') {
-            playCompletionSound()
+            playCompletionSound().catch(() => {})
           }
           stopPolling()
         }
@@ -179,9 +251,11 @@ const HomePage = () => {
 
       const response = await api.createJob({
         filename: uploadedFilename,
+        originalFilename: uploadedDisplayName || uploadedFile?.name || uploadedFilename,
         cropSeconds: settings.cropSeconds,
         outputFormats: settings.outputFormats,
-        language: settings.language || null
+        language: settings.language || null,
+        asrEngine: settings.asrEngine || defaultAsrEngine
       })
 
       const newJobId = response.data.job_id
@@ -215,7 +289,7 @@ const HomePage = () => {
     setUploadedFilename('')
     setUploadedDisplayName('')
     setAudioUrl('')
-    setSettings(initialSettings)
+    setSettings({ ...initialSettings, asrEngine: defaultAsrEngine })
     setIsProcessing(false)
     setIsUploading(false)
     setProgress(0)
@@ -239,14 +313,14 @@ const HomePage = () => {
         <header className="panel fade-up">
           <div className="flex flex-col lg:flex-row gap-8 items-start">
             <div className="flex-1">
-              <span className="badge">Local Qwen3-ASR</span>
+              <span className="badge">Multi-ASR Engine</span>
               <h1 className="hero-title text-4xl md:text-5xl mt-4">音频处理与字幕生成</h1>
               <p className="text-slate-600 mt-3">
-                本地模型驱动，支持裁剪、字幕断句和多格式导出，适合快速生成配套字幕。
+                支持本地 Qwen3 与 AsrTools 同源在线接口，兼容裁剪、字幕断句和多格式导出。
               </p>
               <div className="mt-4 flex flex-wrap gap-3 text-sm text-slate-600">
                 <div className="px-3 py-1 rounded-full bg-white/70 border border-slate-200">WAV / MP3</div>
-                <div className="px-3 py-1 rounded-full bg-white/70 border border-slate-200">本地推理</div>
+                <div className="px-3 py-1 rounded-full bg-white/70 border border-slate-200">多引擎识别</div>
                 <div className="px-3 py-1 rounded-full bg-white/70 border border-slate-200">SRT + TXT</div>
               </div>
             </div>
@@ -271,6 +345,7 @@ const HomePage = () => {
             <ParameterSettings
               onSettingsChange={handleSettingsChange}
               settings={settings}
+              engineOptions={asrEngines}
               disabled={isProcessing || !uploadedFile}
             />
             <div className="panel panel-subtle">
@@ -331,6 +406,7 @@ const HomePage = () => {
               <ul className="mt-3 space-y-2 text-sm text-slate-600 list-disc list-inside">
                 <li>首次推理会加载模型，耗时略长。</li>
                 <li>本地模型路径通过后端环境变量配置。</li>
+                <li>BCut/JianYing/KuaiShou 在线接口依赖公网访问，可能因平台策略波动。</li>
                 <li>建议在 5 分钟以内音频上测试以校验速度。</li>
               </ul>
             </div>

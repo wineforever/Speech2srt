@@ -1,8 +1,10 @@
-﻿from flask import Flask
-from flask_cors import CORS
 import os
 
-from app.config import SETTINGS
+from flask import Flask, jsonify, send_from_directory
+from flask_cors import CORS
+
+from app.config import PROJECT_ROOT, SETTINGS
+
 
 def create_app():
     app = Flask(__name__)
@@ -17,8 +19,31 @@ def create_app():
     CORS(app)
 
     from app.routes import api
+
     app.register_blueprint(api, url_prefix="/api")
 
-    return app
+    frontend_dist = os.getenv("SPEECH2SRT_FRONTEND_DIST") or os.path.join(
+        PROJECT_ROOT, "frontend", "dist"
+    )
+    frontend_dist = os.path.abspath(frontend_dist)
 
-app = create_app()
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    def serve_frontend(path):
+        if path == "api" or path.startswith("api/"):
+            return jsonify({"error": "Not found"}), 404
+
+        if os.path.isdir(frontend_dist):
+            target = os.path.join(frontend_dist, path)
+            if path and os.path.isfile(target):
+                return send_from_directory(frontend_dist, path)
+            return send_from_directory(frontend_dist, "index.html")
+
+        return jsonify(
+            {
+                "error": "Frontend dist not found",
+                "hint": "Run `npm run build` in the frontend directory first.",
+            }
+        ), 500
+
+    return app

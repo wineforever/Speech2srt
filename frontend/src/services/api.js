@@ -18,12 +18,14 @@ const uploadFile = (file) => {
   })
 }
 
-const createJob = ({ filename, cropSeconds, outputFormats, language }) => {
+const createJob = ({ filename, originalFilename, cropSeconds, outputFormats, language, asrEngine }) => {
   return api.post('/process', {
     filename,
+    original_filename: originalFilename,
     crop_seconds: cropSeconds,
     output_formats: outputFormats,
-    language
+    language,
+    asr_engine: asrEngine
   })
 }
 
@@ -38,8 +40,10 @@ const downloadFile = (filename) => {
 }
 
 const previewAudio = (filename) => `${api.defaults.baseURL}/preview/${filename}`
+const completionSoundUrl = () => `${api.defaults.baseURL}/assets/completion-sound`
 
 const healthCheck = () => api.get('/health')
+const getAsrEngines = () => api.get('/asr-engines')
 
 export default {
   uploadFile,
@@ -47,5 +51,7 @@ export default {
   getJobStatus,
   downloadFile,
   previewAudio,
-  healthCheck
+  completionSoundUrl,
+  healthCheck,
+  getAsrEngines
 }
