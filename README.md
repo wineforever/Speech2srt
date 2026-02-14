@@ -118,6 +118,36 @@ asr_model_path = F:/Models/Qwen/Qwen3-ASR-0.6B
 3. 安装 FFmpeg，并加入系统 PATH
 4. 拉取项目代码到固定目录，例如：`D:\apps\speech2srt`
 
+如果你希望使用 Chocolatey 一次性安装常用组件，可按下面步骤执行。
+
+#### 1.1 安装 Chocolatey（管理员 PowerShell）
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+```
+
+安装完成后，建议关闭并重新打开 PowerShell，再执行：
+
+```powershell
+choco -v
+```
+
+#### 1.2 使用 Chocolatey 安装 Node LTS、FFmpeg、NSSM
+
+```powershell
+choco install -y nodejs-lts ffmpeg nssm
+```
+
+安装后可快速验证：
+
+```powershell
+node -v
+ffmpeg -version
+nssm version
+```
+
 ### Step 2. 创建后端运行环境
 
 ```powershell
