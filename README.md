@@ -1,62 +1,72 @@
 # Speech2SRT
 
-一个本地音频转字幕工具，支持 Web UI 与 Windows 桌面 GUI（EXE）。
+> Local-first audio transcription and subtitle generation with a modern Web UI.
 
-## Features
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](#environment)
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](#environment)
+[![Flask](https://img.shields.io/badge/Backend-Flask-000000?logo=flask&logoColor=white)](#architecture)
+[![React](https://img.shields.io/badge/Frontend-React-61DAFB?logo=react&logoColor=black)](#architecture)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 
-- 多 ASR 引擎：`BCut接口`（默认）、`JianYing接口`、`KuaiShou接口`、`Qwen3本地模型`
-- 输出格式：`SRT`、`TXT`
-- 支持裁剪起点、语言指定、进度轮询、结果预览、下载
-- 任务完成提示音：使用项目根目录 `Sound.mp3`
-- 一键启动脚本：`start_speech2srt.bat`
-- Windows 桌面 GUI 封装：`desktop_gui.py` + `PyInstaller` 打包为 `.exe`
+Speech2SRT 是一个面向本地部署的音频转字幕工具，支持多 ASR 引擎、任务队列、进度跟踪与 SRT/TXT 导出。
 
-## Project Layout
+## Highlights
+
+- 多 ASR 引擎可选：`BCut接口`（默认）、`JianYing接口`、`KuaiShou接口`、`Qwen3本地模型`
+- Web UI 工作流：上传 -> 参数设置 -> 后台任务 -> 结果下载
+- 输出格式：`SRT` + `TXT`
+- 支持完成提示音：根目录 `Sound.mp3`
+- 支持配置覆盖：`INI > ENV > CLI`
+- 提供 Windows 一键启动脚本：`start_speech2srt.bat`
+
+## Screenshot
+
+你可以在这里放首页截图（建议文件：`docs/screenshot-home.png`）：
+
+```md
+![Speech2SRT Home](docs/screenshot-home.png)
+```
+
+## Architecture
 
 ```text
 speech2srt/
 ├─ backend/                  # Flask API
 │  ├─ app/
+│  ├─ requirements.txt
 │  └─ run.py
 ├─ frontend/                 # React + Vite
-├─ desktop/
-│  ├─ build_exe.bat          # 打包 EXE
-│  ├─ requirements-desktop.txt
-│  └─ run_desktop_dev.bat
 ├─ Sound.mp3                 # 任务完成提示音
-├─ speech2srt.ini            # 主配置
-├─ start_speech2srt.bat      # 一键启动前后端
-└─ desktop_gui.py            # 桌面 GUI 启动器
+├─ speech2srt.ini            # 主配置文件
+├─ start_speech2srt.bat      # 一键启动（前后端）
+└─ README.md
 ```
 
-## Requirements
+## Environment
 
 - Python 3.9+
 - Node.js 18+
-- FFmpeg
-- Windows（打包 EXE 场景）
+- FFmpeg（音频处理依赖）
 
 ## Quick Start
 
-### 1) 安装依赖
+### 1. Install dependencies
 
-后端：
+Backend:
 
 ```powershell
 cd backend
 pip install -r requirements.txt
 ```
 
-前端：
+Frontend:
 
 ```powershell
 cd frontend
 npm install
 ```
 
-### 2) 配置 `speech2srt.ini`
-
-示例：
+### 2. Configure `speech2srt.ini`
 
 ```ini
 [runtime]
@@ -70,15 +80,23 @@ asr_model_path = F:/Models/Qwen/Qwen3-ASR-0.6B
 
 说明：
 
-- `backend_python`：若填写，优先使用这个 Python 路径
-- `backend_conda_env`：若 `backend_python` 为空，则使用 `<conda_env>\python.exe`
-- `asr_engine`：默认引擎（当前推荐 `bcut`）
+- `backend_python`：若填写，优先使用这个 Python 可执行文件
+- `backend_conda_env`：若 `backend_python` 为空，则回退为 `<env>\python.exe`
+- `asr_engine`：默认引擎，推荐 `bcut`
 
-### 3) 启动
+### 3. Start services
 
-方式 A：双击 `start_speech2srt.bat`（推荐）
+推荐直接双击根目录：
 
-方式 B：手动启动
+`start_speech2srt.bat`
+
+该脚本会：
+
+- 启动后端（自动读取 `speech2srt.ini` runtime 配置）
+- 启动前端
+- 自动打开 `http://localhost:3000`
+
+手动方式：
 
 ```powershell
 cd backend
@@ -90,26 +108,28 @@ cd frontend
 npm run dev
 ```
 
-Web UI 默认地址：`http://localhost:3000`
+## ASR Engines
 
-## Completion Sound
+| Engine ID | UI Name | Type | Notes |
+|---|---|---|---|
+| `bcut` | BCut接口 | Online | 默认引擎 |
+| `jianying` | JianYing接口 | Online | 依赖公网 |
+| `kuaishou` | KuaiShou接口 | Online | 依赖公网 |
+| `qwen3_local` | Qwen3本地模型 | Local | 需本地模型路径 |
 
-- 前端在任务完成时请求：`GET /api/assets/completion-sound`
-- 后端优先读取环境变量 `SPEECH2SRT_SOUND_FILE`
-- 未设置时默认读取项目根目录 `Sound.mp3`
+## Core API
 
-如果要替换音效，直接替换根目录同名文件 `Sound.mp3` 即可。
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/upload` | 上传音频 |
+| `POST` | `/api/process` | 创建处理任务 |
+| `GET` | `/api/status/<job_id>` | 查询任务状态 |
+| `GET` | `/api/download/<filename>` | 下载结果 |
+| `GET` | `/api/asr-engines` | 获取引擎列表 |
+| `GET` | `/api/assets/completion-sound` | 获取完成提示音 |
+| `GET` | `/api/health` | 健康检查 |
 
-## API (Core)
-
-- `POST /api/upload`：上传音频
-- `POST /api/process`：创建任务（可传 `asr_engine`）
-- `GET /api/status/<job_id>`：查询任务
-- `GET /api/download/<filename>`：下载产物
-- `GET /api/asr-engines`：获取可选引擎与默认值
-- `GET /api/assets/completion-sound`：获取任务完成提示音
-
-`/api/process` 示例：
+`/api/process` 请求示例：
 
 ```json
 {
@@ -125,42 +145,69 @@ Web UI 默认地址：`http://localhost:3000`
 }
 ```
 
-## Windows Desktop GUI (EXE)
+## Completion Sound
 
-### 本地开发运行
+任务完成后，前端会请求：
 
-```powershell
-python desktop_gui.py
-```
+- `GET /api/assets/completion-sound`
 
-或双击：
+后端按以下顺序查找音频：
 
-`desktop/run_desktop_dev.bat`
+1. 环境变量 `SPEECH2SRT_SOUND_FILE`
+2. 项目根目录 `Sound.mp3`
+3. 当前工作目录 `Sound.mp3`
 
-### 打包 EXE
+如果你想替换音效，直接替换根目录同名文件 `Sound.mp3` 即可。
 
-双击：
+## Configuration Priority
 
-`desktop/build_exe.bat`
+配置优先级（高 -> 低）：
 
-产物：
-
-`dist/Speech2SRT.exe`
-
-说明：
-
-- 打包脚本会先构建 `frontend/dist`
-- EXE 内置前端静态资源、`speech2srt.ini`、`Sound.mp3`
-- 桌面 GUI 仍然调用同一套 Flask API，WebUI 功能保持一致
+1. 命令行参数（CLI）
+2. 环境变量（ENV）
+3. `speech2srt.ini`
+4. 代码默认值
 
 ## Troubleshooting
 
-- 后端启动失败：
-  - 检查 `speech2srt.ini` 中 `backend_python` / `backend_conda_env`
-  - 检查 `pip install -r backend/requirements.txt` 是否完整
-- 前端无法请求后端：
-  - 确认 `http://localhost:5000/api/health` 可访问
-- 在线接口失败：
-  - `BCut/JianYing/KuaiShou` 依赖公网，可能受网络和策略影响
-- 本地模型失败：
-  - 检查 `asr_model_path` 是否正确、`torch` 与 CUDA 环境是否匹配
+### 后端启动失败
+
+- 检查 `speech2srt.ini` 的 `backend_python` / `backend_conda_env`
+- 确认依赖安装完成：`pip install -r backend/requirements.txt`
+
+### 前端无法请求后端
+
+- 检查 `http://localhost:5000/api/health` 是否可访问
+- 确认前端运行在 `http://localhost:3000`
+
+### 在线引擎失败
+
+- `BCut/JianYing/KuaiShou` 依赖公网，可能受网络和接口策略影响
+
+### 本地模型失败
+
+- 检查 `asr_model_path` 路径
+- 检查 `torch` 与 CUDA 环境匹配关系
+
+## Roadmap
+
+- [ ] 批量文件处理与批量下载
+- [ ] 更细粒度的字幕断句参数
+- [ ] 多语言 UI
+
+## Contributing
+
+欢迎提交 Issue / PR。建议在提交前完成：
+
+```powershell
+cd frontend
+npm run build
+```
+
+```powershell
+python -m compileall backend/app backend/run.py
+```
+
+## License
+
+MIT
