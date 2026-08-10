@@ -3,14 +3,14 @@ import threading
 import inspect
 import gc
 
-from app.asr_engines import (
+from .asr_engines import (
     ENGINE_QWEN3_LOCAL,
     list_asr_engines,
     resolve_asr_engine,
     transcribe_with_online_engine,
 )
-from app.config import SETTINGS
-from app.audio_processor import load_audio, audio_duration_seconds, export_chunks
+from .config import SETTINGS
+from .audio_processor import load_audio, audio_duration_seconds, export_chunks
 
 _MODEL = None
 _MODEL_LOCK = threading.Lock()

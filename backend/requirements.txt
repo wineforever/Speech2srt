@@ -1,4 +1,0 @@
-﻿pydub
-qwen-asr
-torch
-requests

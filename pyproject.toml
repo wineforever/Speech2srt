@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "speech2srt-cli"
+version = "1.0.0"
+description = "Turn audio into SRT and TXT with pluggable online or local ASR engines."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Speech2SRT contributors" }]
+dependencies = [
+    "pydub>=0.25,<1",
+    "requests>=2.31,<3",
+]
+
+[project.optional-dependencies]
+local = ["qwen-asr", "torch"]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+speech2srt = "speech2srt.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["speech2srt*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

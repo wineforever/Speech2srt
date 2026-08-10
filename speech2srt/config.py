@@ -3,9 +3,8 @@ import os
 from dataclasses import dataclass, fields
 from typing import Any, Dict, Optional, Tuple
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BACKEND_ROOT = os.path.abspath(os.path.join(BASE_DIR, os.pardir))
-PROJECT_ROOT = os.path.abspath(os.path.join(BACKEND_ROOT, os.pardir))
+PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(PACKAGE_DIR, os.pardir))
 DEFAULT_CONFIG_PATH = os.path.join(PROJECT_ROOT, "speech2srt.ini")
 DEFAULT_MODEL_PATH = r"F:\\Models\\Qwen\\Qwen3-ASR-0.6B"
 
@@ -126,23 +125,23 @@ def load_settings(
     upload_dir = _resolve_path(
         _pick_value(
             "upload_dir",
-            os.path.join(BACKEND_ROOT, "uploads"),
+            os.path.join(PROJECT_ROOT, "uploads"),
             ini_values,
             cli_overrides,
             "UPLOAD_DIR",
         ),
         ini_base_dir,
-    ) or os.path.join(BACKEND_ROOT, "uploads")
+    ) or os.path.join(PROJECT_ROOT, "uploads")
     output_dir = _resolve_path(
         _pick_value(
             "output_dir",
-            os.path.join(BACKEND_ROOT, "outputs"),
+            os.path.join(PROJECT_ROOT, "outputs"),
             ini_values,
             cli_overrides,
             "OUTPUT_DIR",
         ),
         ini_base_dir,
-    ) or os.path.join(BACKEND_ROOT, "outputs")
+    ) or os.path.join(PROJECT_ROOT, "outputs")
 
     max_content_length_mb = _to_int(
         _pick_value("max_content_length_mb", 100, ini_values, cli_overrides, "MAX_CONTENT_LENGTH_MB"),

@@ -44,6 +44,7 @@ ASR_ENGINE_DEFINITIONS = [
 ]
 
 _ENGINE_IDS = {item["id"] for item in ASR_ENGINE_DEFINITIONS}
+ENGINE_IDS = tuple(item["id"] for item in ASR_ENGINE_DEFINITIONS)
 _ENGINE_ALIASES = {
     "qwen": ENGINE_QWEN3_LOCAL,
     "qwen3": ENGINE_QWEN3_LOCAL,

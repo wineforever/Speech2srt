@@ -1,123 +1,118 @@
 # Speech2SRT CLI
 
-将音频通过语音识别接口转写为字幕。程序默认使用 BCut 在线接口，直接处理完整原始音频，不进行裁剪，并同时生成 SRT 字幕和 TXT 文本。
+一个轻量、可扩展的音频转字幕命令行工具。输入音频文件，一次生成标准 `SRT` 字幕和纯文本 `TXT`；支持 BCut、剪映、快手在线识别接口，以及 Qwen3-ASR 本地模型。
 
-## 功能
+> 默认使用 BCut 在线接口。在线引擎会把音频上传到对应的第三方服务，请勿处理不允许外传的敏感音频。相关接口并非官方稳定 API，可能随服务端协议变化而失效。
 
-- 命令行直接转写单个音频文件
-- 默认使用 `bcut`，也可切换 `jianying`、`kuaishou` 或 `qwen3_local`
-- 不裁剪、不重编码、不额外保存音频副本
-- 每次固定输出同名 `.srt` 和 `.txt`
-- 支持 WAV、MP3，格式范围可在 `speech2srt.ini` 中配置
-- CLI 单一入口，不包含 Web 服务和前端
+## 特性
 
-## 项目结构
+- 一条命令生成同名 `.srt` 与 `.txt`
+- 在线引擎直接识别原始音频，不裁剪、不重编码
+- 在线与本地 ASR 引擎使用统一工作流
+- INI、环境变量、命令行三级配置
+- 本地 Qwen3-ASR 按需加载，可配置 CUDA、精度与分片时长
+- 可安装 Python 包，同时兼容原有 `python cli.py` 用法
+- 核心字幕与配置逻辑具备离线自动化测试
 
-```text
-Speech2SrtCLI/
-├─ cli.py                     # CLI 入口
-├─ backend/
-│  ├─ app/
-│  │  ├─ asr_engines.py          # BCut、剪映、快手接口
-│  │  ├─ asr_service.py          # ASR 引擎调度与本地模型懒加载
-│  │  ├─ audio_processor.py      # 音频校验与本地模型分片
-│  │  ├─ subtitle_generator.py   # SRT/TXT 生成
-│  │  ├─ config.py               # INI、环境变量与运行参数
-│  │  └─ utils.py                # 文件名与时间格式工具
-│  └─ requirements.txt
-├─ speech2srt.ini                # 默认配置
-├─ requirements.txt              # 依赖入口
-└─ README.md
-```
+## 快速开始
 
-## 环境要求
+### 1. 环境要求
 
-- Python 3.9+
-- FFmpeg，并确保 `ffmpeg` 可从 `PATH` 调用
-- BCut、剪映和快手引擎需要访问公网
+- Python 3.9 或更高版本
+- [FFmpeg](https://ffmpeg.org/download.html)，并确保 `ffmpeg` 可从 `PATH` 调用
+- 在线引擎需要可访问对应服务的网络环境
 
-## 安装
-
-建议创建虚拟环境：
+### 2. 安装
 
 ```powershell
+git clone https://github.com/wineforever/Speech2srt.git
+cd Speech2srt
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
 
-`pydub` 负责读取音频，MP3 等格式需要 FFmpeg。`torch` 和 `qwen-asr` 仅在选择 `qwen3_local` 时按需加载。
-
-## 使用
-
-在项目根目录执行：
+如需使用 Qwen3-ASR 本地模型，安装可选依赖：
 
 ```powershell
+python -m pip install -e ".[local]"
+```
+
+也可以继续使用依赖文件：
+
+```powershell
+python -m pip install -r requirements.txt
+# 本地模型额外依赖
+python -m pip install -r requirements-local.txt
+```
+
+### 3. 转写音频
+
+```powershell
+speech2srt .\audio.mp3
+```
+
+未安装为命令时，以下两种入口效果相同：
+
+```powershell
+python -m speech2srt .\audio.mp3
 python cli.py .\audio.mp3
 ```
 
-默认输出到 `backend\outputs`：
+默认生成：
 
 ```text
-backend\outputs\audio.srt
-backend\outputs\audio.txt
+outputs/
+├── audio.srt
+└── audio.txt
 ```
 
-程序直接提交输入音频，不执行裁剪，也不会生成处理后的音频副本。
+## 常用示例
 
-### 指定输出目录
+指定输出目录：
 
 ```powershell
-python cli.py .\audio.wav --output-dir .\results
+speech2srt .\audio.wav --output-dir .\results
 ```
 
-### 指定语言
+切换识别引擎：
 
 ```powershell
-python cli.py .\audio.mp3 --language zh
+speech2srt .\audio.mp3 --asr-engine jianying
+speech2srt .\audio.mp3 --asr-engine kuaishou
+speech2srt .\audio.mp3 --asr-engine qwen3_local
 ```
 
-### 切换 ASR 引擎
+指定语言并调整字幕长度：
 
 ```powershell
-python cli.py .\audio.mp3 --asr-engine jianying
-python cli.py .\audio.mp3 --asr-engine kuaishou
-python cli.py .\audio.mp3 --asr-engine qwen3_local
+speech2srt .\audio.mp3 --language zh --subtitle-max-chars 40 --subtitle-min-duration 0.5
 ```
 
-### 调整字幕长度
+查看全部参数：
 
 ```powershell
-python cli.py .\audio.mp3 --subtitle-max-chars 40 --subtitle-min-duration 0.5
+speech2srt --help
 ```
 
-### 查看帮助
+## ASR 引擎
 
-```powershell
-python cli.py --help
-```
+| 引擎 | 类型 | 默认安装可用 | 说明 |
+|---|---|---:|---|
+| `bcut` | 在线 | 是 | 默认引擎，使用非官方在线识别接口 |
+| `jianying` | 在线 | 是 | 使用剪映相关的非官方在线接口 |
+| `kuaishou` | 在线 | 是 | 使用快手相关的非官方在线接口 |
+| `qwen3_local` | 本地 | 否 | 需要 `torch`、`qwen-asr` 与本地模型 |
 
-## CLI 参数
-
-| 参数 | 默认值 | 说明 |
-|---|---:|---|
-| `input` | 必填 | 输入音频路径 |
-| `-o, --output-dir` | 配置中的 `output_dir` | SRT/TXT 输出目录 |
-| `--asr-engine` | `bcut` | ASR 引擎 |
-| `--language` | 自动识别 | 可选语言代码 |
-| `--config` | `speech2srt.ini` | INI 配置路径 |
-| `--subtitle-max-chars` | `60` | 单条字幕最大字符数 |
-| `--subtitle-min-duration` | `0.4` | 单条字幕最小时长（秒） |
-
-参数覆盖顺序为：命令行参数 > 环境变量 > `speech2srt.ini` > 内置默认值。
+在线引擎不进行音频分片。`qwen3_local` 会按照 `asr_chunk_seconds` 分片推理，并在完成后清理临时分片。
 
 ## 配置
 
-默认配置文件为 `speech2srt.ini`。CLI 常用配置：
+默认配置文件是项目根目录的 [`speech2srt.ini`](speech2srt.ini)：
 
 ```ini
 [paths]
-output_dir = backend/outputs
+output_dir = outputs
 
 [service]
 supported_formats = wav,mp3
@@ -125,6 +120,9 @@ max_audio_duration = 0
 
 [asr]
 asr_engine = bcut
+asr_model_path = F:/Models/Qwen/Qwen3-ASR-0.6B
+asr_device = cuda:0
+asr_dtype = bfloat16
 asr_chunk_seconds = 60
 asr_unload_after_task = true
 
@@ -133,37 +131,79 @@ subtitle_max_chars = 60
 subtitle_min_duration = 0.4
 ```
 
-- `max_audio_duration = 0` 表示不限制时长。
-- `asr_engine = bcut` 是默认在线引擎。
-- 在线引擎使用原始输入文件，不裁剪；`qwen3_local` 会按 `asr_chunk_seconds` 分片推理。
+- `max_audio_duration = 0`：不限制输入时长
+- `asr_local_files_only = true`：只从本地路径加载 Qwen 模型
+- `asr_unload_after_task = true`：任务后释放模型和显存
+- 相对路径以配置文件所在目录为基准解析
 
-## 输出说明
+配置优先级为：**命令行参数 > 环境变量 > INI 文件 > 内置默认值**。常用环境变量包括：
 
-假设输入文件为 `meeting.mp3`，输出文件为：
+| 环境变量 | 对应配置 |
+|---|---|
+| `OUTPUT_DIR` | 输出目录 |
+| `SUPPORTED_FORMATS` | 支持的扩展名，逗号分隔 |
+| `MAX_AUDIO_DURATION` | 最大音频时长（秒） |
+| `ASR_ENGINE` | 默认 ASR 引擎 |
+| `ASR_MODEL_PATH` | 本地模型目录 |
+| `ASR_DEVICE` | 推理设备，如 `cuda:0` 或 `cpu` |
+| `ASR_DTYPE` | `bfloat16`、`float16` 或 `float32` |
+| `ASR_CHUNK_SECONDS` | 本地模型分片时长 |
+| `SUBTITLE_MAX_CHARS` | 单条字幕最大字符数 |
+| `SUBTITLE_MIN_DURATION` | 单条字幕最小时长 |
 
-- `meeting.srt`：带时间轴的字幕
-- `meeting.txt`：每条字幕一行的纯文本
+## 项目架构
 
-若同名文件已存在，CLI 会覆盖同名 SRT/TXT。需要保留旧结果时，请指定不同的输出目录或先重命名已有文件。
+```text
+Speech2SrtCLI/
+├── speech2srt/
+│   ├── cli.py                 # 参数解析、终端输出和退出码
+│   ├── application.py         # 单次转写用例编排
+│   ├── asr_service.py         # ASR 调度、本地模型生命周期和分片
+│   ├── asr_engines.py         # 在线引擎适配器
+│   ├── audio_processor.py     # 音频读取、校验和分片
+│   ├── subtitle_generator.py  # 字幕拆分及 SRT/TXT 渲染
+│   ├── config.py              # 配置加载与优先级
+│   └── utils.py               # 文件名和时间格式工具
+├── tests/                     # 离线测试
+├── cli.py                     # 向后兼容入口
+├── pyproject.toml             # 包元数据与命令注册
+├── speech2srt.ini             # 默认配置
+└── requirements*.txt          # 基础/本地模型依赖
+```
+
+`application.transcribe_file()` 是 CLI 与业务流程之间的稳定边界。新增入口（例如桌面应用或批处理器）时，可以直接调用它，无需模拟命令行参数。
+
+## 开发与测试
+
+```powershell
+python -m pip install -e ".[dev]"
+python -m pytest
+```
+
+不安装开发依赖时，也可用标准库运行测试：
+
+```powershell
+python -m unittest discover -s tests -v
+```
 
 ## 常见问题
 
-### FFmpeg 未找到
+### 找不到 FFmpeg
 
-安装 FFmpeg 并将其 `bin` 目录加入 `PATH`，然后重新打开终端。
-
-### BCut 转写失败
-
-确认网络可用后重试。在线接口属于非官方、非稳定依赖，其协议或可用性可能变化。
+安装 FFmpeg，将其 `bin` 目录加入 `PATH`，重新打开终端后运行 `ffmpeg -version` 确认。
 
 ### 输入格式不支持
 
-在 `speech2srt.ini` 的 `supported_formats` 中添加扩展名，并确认 FFmpeg 能解码该格式。
+在 `speech2srt.ini` 的 `supported_formats` 中加入扩展名，并确认 FFmpeg 可以解码该文件。
 
-### 本地模型失败
+### 本地模型无法启动
 
-使用 `qwen3_local` 时，检查 `asr_model_path`、PyTorch、CUDA 驱动和设备配置。
+确认已安装本地模型依赖，并检查 `asr_model_path`、CUDA 驱动、`asr_device` 与 `asr_dtype`。当 CUDA 不可用时，程序会退回 CPU，但速度通常明显下降。
+
+### 在线接口转写失败
+
+先确认网络可用后重试。由于在线引擎依赖非官方协议，服务端更新可能导致暂时不可用；对稳定性或隐私有严格要求时，请使用 `qwen3_local`。
 
 ## License
 
-MIT
+[MIT](LICENSE)

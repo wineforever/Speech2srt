@@ -2,7 +2,7 @@ import os
 import re
 import uuid
 
-from app.config import SETTINGS
+from .config import SETTINGS
 
 
 def generate_unique_filename(original_filename):

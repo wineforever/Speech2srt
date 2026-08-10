@@ -1,7 +1,7 @@
 ﻿import os
 
-from app.config import SETTINGS
-from app.utils import format_time
+from .config import SETTINGS
+from .utils import format_time
 import re
 
 

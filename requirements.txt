@@ -1,1 +1,2 @@
--r backend/requirements.txt
+pydub>=0.25,<1
+requests>=2.31,<3

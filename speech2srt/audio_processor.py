@@ -1,8 +1,8 @@
 ﻿from pydub import AudioSegment
 import os
 
-from app.config import SETTINGS
-from app.utils import get_file_extension, is_supported_format
+from .config import SETTINGS
+from .utils import get_file_extension, is_supported_format
 
 
 def load_audio(file_path):
