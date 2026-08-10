@@ -9,7 +9,7 @@
 - 不裁剪、不重编码、不额外保存音频副本
 - 每次固定输出同名 `.srt` 和 `.txt`
 - 支持 WAV、MP3，格式范围可在 `speech2srt.ini` 中配置
-- 复用原有 Flask API 与 React Web UI；CLI 不需要启动它们
+- CLI 单一入口，不包含 Web 服务和前端
 
 ## 项目结构
 
@@ -18,15 +18,16 @@ Speech2SrtCLI/
 ├─ backend/
 │  ├─ app/
 │  │  ├─ asr_engines.py          # BCut、剪映、快手接口
-│  │  ├─ asr_service.py          # ASR 引擎调度
+│  │  ├─ asr_service.py          # ASR 引擎调度与本地模型懒加载
 │  │  ├─ audio_processor.py      # 音频校验与本地模型分片
 │  │  ├─ subtitle_generator.py   # SRT/TXT 生成
-│  │  └─ config.py               # INI、环境变量与运行参数
+│  │  ├─ config.py               # INI、环境变量与运行参数
+│  │  └─ utils.py                # 文件名与时间格式工具
 │  ├─ cli.py                     # CLI 入口
-│  └─ run.py                     # 可选的 Web 服务入口
-├─ frontend/                     # 可选的 React Web UI
+│  └─ requirements.txt
 ├─ speech2srt.ini                # 默认配置
-└─ requirements.txt
+├─ requirements.txt              # 依赖入口
+└─ README.md
 ```
 
 ## 环境要求
@@ -34,8 +35,6 @@ Speech2SrtCLI/
 - Python 3.9+
 - FFmpeg，并确保 `ffmpeg` 可从 `PATH` 调用
 - BCut、剪映和快手引擎需要访问公网
-
-只有使用 Web UI 时才需要 Node.js 18+。
 
 ## 安装
 
@@ -47,7 +46,7 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-完整依赖包含本地 Qwen3 ASR 所需的 PyTorch。若只使用默认 BCut 接口，程序启动时不会加载本地模型。
+`pydub` 负责读取音频，MP3 等格式需要 FFmpeg。`torch` 和 `qwen-asr` 仅在选择 `qwen3_local` 时按需加载。
 
 ## 使用
 
@@ -126,6 +125,7 @@ max_audio_duration = 0
 
 [asr]
 asr_engine = bcut
+asr_chunk_seconds = 60
 asr_unload_after_task = true
 
 [subtitle]
@@ -135,7 +135,7 @@ subtitle_min_duration = 0.4
 
 - `max_audio_duration = 0` 表示不限制时长。
 - `asr_engine = bcut` 是默认在线引擎。
-- `qwen3_local` 会按 `asr_chunk_seconds` 分片推理；在线接口使用原始输入文件，不分片、不裁剪。
+- 在线引擎使用原始输入文件，不裁剪；`qwen3_local` 会按 `asr_chunk_seconds` 分片推理。
 
 ## 输出说明
 
@@ -145,24 +145,6 @@ subtitle_min_duration = 0.4
 - `meeting.txt`：每条字幕一行的纯文本
 
 若同名文件已存在，CLI 会覆盖同名 SRT/TXT。需要保留旧结果时，请指定不同的输出目录或先重命名已有文件。
-
-## 可选 Web 服务
-
-原有 Web API 和 React UI 仍可使用。启动后端：
-
-```powershell
-python backend\run.py --host 127.0.0.1 --port 5000
-```
-
-构建前端：
-
-```powershell
-cd frontend
-npm ci
-npm run build
-```
-
-后端会托管 `frontend\dist`。
 
 ## 常见问题
 

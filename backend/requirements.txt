@@ -1,9 +1,4 @@
-﻿Flask
-Flask-CORS
-pydub
-librosa
-numpy
-soundfile
+﻿pydub
 qwen-asr
 torch
 requests
