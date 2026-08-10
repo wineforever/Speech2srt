@@ -1,291 +1,186 @@
-# Speech2SRT
+# Speech2SRT CLI
 
-本项目用于将音频文件转写为字幕，提供 Web UI 与后端 API，支持多 ASR 引擎与任务队列。
+将音频通过语音识别接口转写为字幕。程序默认使用 BCut 在线接口，直接处理完整原始音频，不进行裁剪，并同时生成 SRT 字幕和 TXT 文本。
 
-[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](#环境要求)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](#环境要求)
-[![Flask](https://img.shields.io/badge/Backend-Flask-black?logo=flask)](#项目结构)
-[![React](https://img.shields.io/badge/Frontend-React-61DAFB?logo=react&logoColor=black)](#项目结构)
+## 功能
 
----
-
-## 核心特性
-
-- 多 ASR 引擎：`BCut接口`（默认）、`JianYing接口`、`KuaiShou接口`、`Qwen3本地模型`
-- 输出格式：`SRT`、`TXT`
-- 支持任务队列、进度轮询、结果预览与下载
-- 任务完成提示音：根目录 `Sound.mp3`
-- 支持配置覆盖：`CLI > ENV > INI`
-- Windows 一键启动脚本：`start_speech2srt.bat`
-
-## 启动性能优化（本次更新）
-
-- 默认引擎为 `bcut`（不使用 Qwen3 大模型）
-- 后端进程启动时**不导入** `torch` 和 `qwen_asr`
-- 仅在以下条件同时满足时才开始导入 PyTorch：
-  1. 任务引擎选择 `qwen3_local`
-  2. 任务真正开始转写
-
-这能明显缩短后端冷启动时间，尤其是 Windows 服务器场景。
-
----
+- 命令行直接转写单个音频文件
+- 默认使用 `bcut`，也可切换 `jianying`、`kuaishou` 或 `qwen3_local`
+- 不裁剪、不重编码、不额外保存音频副本
+- 每次固定输出同名 `.srt` 和 `.txt`
+- 支持 WAV、MP3，格式范围可在 `speech2srt.ini` 中配置
+- 复用原有 Flask API 与 React Web UI；CLI 不需要启动它们
 
 ## 项目结构
 
 ```text
-speech2srt/
-├─ backend/                  # Flask 后端
+Speech2SrtCLI/
+├─ backend/
 │  ├─ app/
-│  ├─ requirements.txt
-│  └─ run.py
-├─ frontend/                 # React + Vite 前端
-├─ Sound.mp3                 # 完成提示音
-├─ speech2srt.ini            # 项目配置
-├─ start_speech2srt.bat      # 一键启动前后端
-└─ README.md
+│  │  ├─ asr_engines.py          # BCut、剪映、快手接口
+│  │  ├─ asr_service.py          # ASR 引擎调度
+│  │  ├─ audio_processor.py      # 音频校验与本地模型分片
+│  │  ├─ subtitle_generator.py   # SRT/TXT 生成
+│  │  └─ config.py               # INI、环境变量与运行参数
+│  ├─ cli.py                     # CLI 入口
+│  └─ run.py                     # 可选的 Web 服务入口
+├─ frontend/                     # 可选的 React Web UI
+├─ speech2srt.ini                # 默认配置
+└─ requirements.txt
 ```
-
----
 
 ## 环境要求
 
 - Python 3.9+
-- Node.js 18+
-- FFmpeg
+- FFmpeg，并确保 `ffmpeg` 可从 `PATH` 调用
+- BCut、剪映和快手引擎需要访问公网
 
----
+只有使用 Web UI 时才需要 Node.js 18+。
 
-## 本地开发快速开始
+## 安装
 
-### 1. 安装依赖
-
-后端：
+建议创建虚拟环境：
 
 ```powershell
-cd backend
-pip install -r requirements.txt
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-前端：
+完整依赖包含本地 Qwen3 ASR 所需的 PyTorch。若只使用默认 BCut 接口，程序启动时不会加载本地模型。
+
+## 使用
+
+在项目根目录执行：
 
 ```powershell
-cd frontend
-npm install
+python backend\cli.py .\audio.mp3
 ```
 
-### 2. 配置 `speech2srt.ini`
+默认输出到 `backend\outputs`：
 
-示例：
+```text
+backend\outputs\audio.srt
+backend\outputs\audio.txt
+```
+
+程序直接提交输入音频，不执行裁剪，也不会生成处理后的音频副本。
+
+### 指定输出目录
+
+```powershell
+python backend\cli.py .\audio.wav --output-dir .\results
+```
+
+### 指定语言
+
+```powershell
+python backend\cli.py .\audio.mp3 --language zh
+```
+
+### 切换 ASR 引擎
+
+```powershell
+python backend\cli.py .\audio.mp3 --asr-engine jianying
+python backend\cli.py .\audio.mp3 --asr-engine kuaishou
+python backend\cli.py .\audio.mp3 --asr-engine qwen3_local
+```
+
+### 调整字幕长度
+
+```powershell
+python backend\cli.py .\audio.mp3 --subtitle-max-chars 40 --subtitle-min-duration 0.5
+```
+
+### 查看帮助
+
+```powershell
+python backend\cli.py --help
+```
+
+## CLI 参数
+
+| 参数 | 默认值 | 说明 |
+|---|---:|---|
+| `input` | 必填 | 输入音频路径 |
+| `-o, --output-dir` | 配置中的 `output_dir` | SRT/TXT 输出目录 |
+| `--asr-engine` | `bcut` | ASR 引擎 |
+| `--language` | 自动识别 | 可选语言代码 |
+| `--config` | `speech2srt.ini` | INI 配置路径 |
+| `--subtitle-max-chars` | `60` | 单条字幕最大字符数 |
+| `--subtitle-min-duration` | `0.4` | 单条字幕最小时长（秒） |
+
+参数覆盖顺序为：命令行参数 > 环境变量 > `speech2srt.ini` > 内置默认值。
+
+## 配置
+
+默认配置文件为 `speech2srt.ini`。CLI 常用配置：
 
 ```ini
-[runtime]
-backend_conda_env = F:\miniconda\envs\unsloth
-backend_python =
+[paths]
+output_dir = backend/outputs
+
+[service]
+supported_formats = wav,mp3
+max_audio_duration = 0
 
 [asr]
 asr_engine = bcut
-asr_model_path = F:/Models/Qwen/Qwen3-ASR-0.6B
+asr_unload_after_task = true
+
+[subtitle]
+subtitle_max_chars = 60
+subtitle_min_duration = 0.4
 ```
 
-说明：
+- `max_audio_duration = 0` 表示不限制时长。
+- `asr_engine = bcut` 是默认在线引擎。
+- `qwen3_local` 会按 `asr_chunk_seconds` 分片推理；在线接口使用原始输入文件，不分片、不裁剪。
 
-- `backend_python`：若填写则优先使用该 Python 可执行文件
-- `backend_conda_env`：若 `backend_python` 为空，则使用 `<env>\python.exe`
-- `asr_engine`：默认引擎，建议保留 `bcut`
+## 输出说明
 
-### 3. 启动
+假设输入文件为 `meeting.mp3`，输出文件为：
 
-推荐直接双击：
+- `meeting.srt`：带时间轴的字幕
+- `meeting.txt`：每条字幕一行的纯文本
 
-`start_speech2srt.bat`
+若同名文件已存在，CLI 会覆盖同名 SRT/TXT。需要保留旧结果时，请指定不同的输出目录或先重命名已有文件。
 
-该脚本会自动：
+## 可选 Web 服务
 
-- 启动后端
-- 启动前端开发服务器
-- 打开 `http://localhost:3000`
-
----
-
-## Windows 服务器部署（推荐流程）
-
-以下流程适合生产/长期运行，不依赖前端开发服务器。
-
-### Step 1. 服务器准备
-
-1. 安装 Miniconda（或你已有 Python 发行版）
-2. 安装 Node.js LTS
-3. 安装 FFmpeg，并加入系统 PATH
-4. 拉取项目代码到固定目录，例如：`D:\apps\speech2srt`
-
-如果你希望使用 Chocolatey 一次性安装常用组件，可按下面步骤执行。
-
-#### 1.1 安装 Chocolatey（管理员 PowerShell）
+原有 Web API 和 React UI 仍可使用。启动后端：
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+python backend\run.py --host 127.0.0.1 --port 5000
 ```
 
-安装完成后，建议关闭并重新打开 PowerShell，再执行：
+构建前端：
 
 ```powershell
-choco -v
-```
-
-#### 1.2 使用 Chocolatey 安装 Node LTS、FFmpeg、NSSM
-
-```powershell
-choco install -y nodejs-lts ffmpeg nssm
-```
-
-安装后可快速验证：
-
-```powershell
-node -v
-ffmpeg -version
-nssm version
-```
-
-### Step 2. 创建后端运行环境
-
-```powershell
-conda create -n speech2srt python=3.10 -y
-conda activate speech2srt
-cd D:\apps\speech2srt\backend
-pip install -r requirements.txt
-```
-
-说明：如果你长期只用在线引擎（`bcut/jianying/kuaishou`），即使安装了 `torch`，后端启动也不会提前导入。
-
-### Step 3. 构建前端静态文件
-
-```powershell
-cd D:\apps\speech2srt\frontend
+cd frontend
 npm ci
 npm run build
 ```
 
-构建后会生成 `frontend\dist`。  
-后端会自动托管该目录（无需 `npm run dev`）。
-
-### Step 4. 配置生产参数
-
-编辑 `speech2srt.ini`：
-
-```ini
-[runtime]
-backend_conda_env = F:\miniconda\envs\speech2srt
-backend_python =
-
-[asr]
-asr_engine = bcut
-```
-
-### Step 5. 启动后端（生产方式）
-
-```powershell
-cd D:\apps\speech2srt\backend
-F:\miniconda\envs\speech2srt\python.exe run.py --host 0.0.0.0 --port 5000
-```
-
-访问地址：
-
-- 同机：`http://127.0.0.1:5000`
-- 局域网：`http://<server-ip>:5000`
-
-### Step 6. 注册为 Windows 服务（可选，推荐）
-
-建议使用 NSSM（Non-Sucking Service Manager）：
-
-```powershell
-nssm install Speech2SRT
-```
-
-配置：
-
-- `Application`：`F:\miniconda\envs\speech2srt\python.exe`
-- `Startup directory`：`D:\apps\speech2srt\backend`
-- `Arguments`：`run.py --host 0.0.0.0 --port 5000`
-
-然后：
-
-```powershell
-nssm start Speech2SRT
-```
-
-### Step 7. 防火墙与反向代理（可选）
-
-- 开放 `5000` 端口（或仅内网开放）
-- 若对外提供服务，建议通过 Nginx/IIS 做 HTTPS 反向代理
-
----
-
-## 完成提示音
-
-- 前端请求：`GET /api/assets/completion-sound`
-- 后端查找顺序：
-  1. `SPEECH2SRT_SOUND_FILE` 环境变量
-  2. 项目根目录 `Sound.mp3`
-  3. 当前工作目录 `Sound.mp3`
-
-你可以直接替换根目录 `Sound.mp3` 来更换提示音。
-
----
-
-## API 概览
-
-| Method | Endpoint | 说明 |
-|---|---|---|
-| `POST` | `/api/upload` | 上传音频 |
-| `POST` | `/api/process` | 创建任务 |
-| `GET` | `/api/status/<job_id>` | 查询任务状态 |
-| `GET` | `/api/download/<filename>` | 下载结果 |
-| `GET` | `/api/asr-engines` | 获取引擎列表 |
-| `GET` | `/api/assets/completion-sound` | 获取完成提示音 |
-| `GET` | `/api/health` | 健康检查 |
-
-`/api/process` 请求示例：
-
-```json
-{
-  "filename": "demo.wav",
-  "original_filename": "demo.wav",
-  "crop_seconds": 0,
-  "output_formats": {
-    "srt": true,
-    "txt": true
-  },
-  "language": null,
-  "asr_engine": "bcut"
-}
-```
-
----
+后端会托管 `frontend\dist`。
 
 ## 常见问题
 
-### 1) 后端启动失败
+### FFmpeg 未找到
 
-- 检查 `speech2srt.ini` 的 `backend_python` / `backend_conda_env`
-- 检查依赖是否完整：`pip install -r backend/requirements.txt`
+安装 FFmpeg 并将其 `bin` 目录加入 `PATH`，然后重新打开终端。
 
-### 2) 前端无法访问后端
+### BCut 转写失败
 
-- 检查 `http://localhost:5000/api/health`
-- 开发模式确认前端在 `http://localhost:3000`
+确认网络可用后重试。在线接口属于非官方、非稳定依赖，其协议或可用性可能变化。
 
-### 3) 在线引擎失败
+### 输入格式不支持
 
-- `BCut/JianYing/KuaiShou` 依赖公网，可能受网络与接口策略影响
+在 `speech2srt.ini` 的 `supported_formats` 中添加扩展名，并确认 FFmpeg 能解码该格式。
 
-### 4) Qwen3 本地模型失败
+### 本地模型失败
 
-- 检查 `asr_model_path` 是否正确
-- 检查 `torch` 与 CUDA/驱动兼容性
-
----
+使用 `qwen3_local` 时，检查 `asr_model_path`、PyTorch、CUDA 驱动和设备配置。
 
 ## License
 
