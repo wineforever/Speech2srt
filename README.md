@@ -15,6 +15,7 @@
 
 ```text
 Speech2SrtCLI/
+├─ cli.py                     # CLI 入口
 ├─ backend/
 │  ├─ app/
 │  │  ├─ asr_engines.py          # BCut、剪映、快手接口
@@ -23,7 +24,6 @@ Speech2SrtCLI/
 │  │  ├─ subtitle_generator.py   # SRT/TXT 生成
 │  │  ├─ config.py               # INI、环境变量与运行参数
 │  │  └─ utils.py                # 文件名与时间格式工具
-│  ├─ cli.py                     # CLI 入口
 │  └─ requirements.txt
 ├─ speech2srt.ini                # 默认配置
 ├─ requirements.txt              # 依赖入口
@@ -53,7 +53,7 @@ python -m pip install -r requirements.txt
 在项目根目录执行：
 
 ```powershell
-python backend\cli.py .\audio.mp3
+python cli.py .\audio.mp3
 ```
 
 默认输出到 `backend\outputs`：
@@ -68,33 +68,33 @@ backend\outputs\audio.txt
 ### 指定输出目录
 
 ```powershell
-python backend\cli.py .\audio.wav --output-dir .\results
+python cli.py .\audio.wav --output-dir .\results
 ```
 
 ### 指定语言
 
 ```powershell
-python backend\cli.py .\audio.mp3 --language zh
+python cli.py .\audio.mp3 --language zh
 ```
 
 ### 切换 ASR 引擎
 
 ```powershell
-python backend\cli.py .\audio.mp3 --asr-engine jianying
-python backend\cli.py .\audio.mp3 --asr-engine kuaishou
-python backend\cli.py .\audio.mp3 --asr-engine qwen3_local
+python cli.py .\audio.mp3 --asr-engine jianying
+python cli.py .\audio.mp3 --asr-engine kuaishou
+python cli.py .\audio.mp3 --asr-engine qwen3_local
 ```
 
 ### 调整字幕长度
 
 ```powershell
-python backend\cli.py .\audio.mp3 --subtitle-max-chars 40 --subtitle-min-duration 0.5
+python cli.py .\audio.mp3 --subtitle-max-chars 40 --subtitle-min-duration 0.5
 ```
 
 ### 查看帮助
 
 ```powershell
-python backend\cli.py --help
+python cli.py --help
 ```
 
 ## CLI 参数
